@@ -1,0 +1,3 @@
+apiVersion: delete.me/v1
+kind: Me
+projectName: automation-operator
