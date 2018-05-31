@@ -1,4 +1,0 @@
-apiVersion: "delete.me/v1"
-kind: "Me"
-metadata:
-  name: "example"
