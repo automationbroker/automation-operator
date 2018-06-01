@@ -1,6 +1,9 @@
 package crd
 
-import "github.com/automationbroker/bundle-lib/bundle"
+import (
+	"github.com/automationbroker/bundle-lib/bundle"
+	"github.com/pborman/uuid"
+)
 
 // BundlePhase - Current phase of the bundle.
 type BundlePhase string
@@ -20,9 +23,11 @@ const (
 
 // BundleStatus - generic bundle status
 type BundleStatus struct {
-	Phase      BundlePhase `json:"phase"`
-	Message    string      `json:"message"`
-	Parameters string      `json:"parameters"`
+	Phase          BundlePhase            `json:"phase"`
+	Message        string                 `json:"message"`
+	Parameters     string                 `json:"parameters"`
+	ID             *uuid.UUID             `json:"id,omitempty"`
+	StatusMessages []bundle.StatusMessage `json:"statusMessages"`
 }
 
 // SpecPlan - the spec and plan for a GVK

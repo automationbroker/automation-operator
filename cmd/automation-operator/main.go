@@ -56,6 +56,13 @@ func main() {
 	spec := getSpec(viper.GetString("apb-image"))
 	//register type with gvk
 	registerType(resource, kind)
+	// Initialize Cluster Config.
+	bundle.InitializeClusterConfig(bundle.ClusterConfig{
+		PullPolicy:    "always",
+		SandboxRole:   "admin",
+		Namespace:     namespace,
+		KeepNamespace: true,
+	})
 
 	sdk.Watch(resource, kind, namespace, resyncPeriod)
 	plan, ok := spec.GetPlan(viper.GetString("plan"))
@@ -197,5 +204,7 @@ plans:
 	if err != nil {
 		logrus.Infof("unable to get the spec - %v", err)
 	}
+	s.Image = image
+	s.Runtime = 2
 	return s
 }

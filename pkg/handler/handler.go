@@ -2,6 +2,7 @@ package stub
 
 import (
 	"context"
+	"crypto/sha1"
 	"encoding/json"
 	"fmt"
 
@@ -9,6 +10,7 @@ import (
 	"github.com/automationbroker/bundle-lib/bundle"
 	"github.com/automationbroker/bundle-lib/runtime"
 	"github.com/operator-framework/operator-sdk/pkg/sdk"
+	"github.com/pborman/uuid"
 	"github.com/sirupsen/logrus"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 )
@@ -41,7 +43,6 @@ func (h *Handler) Handle(ctx context.Context, event sdk.Event) error {
 		logrus.Infof("here - %#v", event.Object)
 		// Need to get json schema
 		handleSpecEvent(s, event)
-
 	}
 	return nil
 }
@@ -136,9 +137,75 @@ func handleSpecEvent(s crd.SpecPlan, event sdk.Event) {
 		}
 	}
 	// Core Reconcile Loop will happen here
+
+	// Hash the paramters
+	specHash, err := hashMap(specMap)
+	if err != nil {
+		logrus.Infof("unable to hash spec parameters: %v", err)
+		crStatus.Message = fmt.Sprintf("could not hash parameters")
+		crStatus.Phase = crd.BundlePhaseFailed
+		o.UnstructuredContent()[statusKey] = crStatus
+		sdk.Update(o)
+		return
+	}
+	if crStatus.ID == nil {
+		// Generate ID.
+		id := uuid.NewRandom()
+		crStatus.ID = &id
+	}
+	if crStatus.Parameters != specHash {
+		crStatus.Parameters = specHash
+		err := launchAPBProvision(specMap, s, &crStatus, o)
+		if err != nil {
+			logrus.Infof("unable to launch apb: %v", err)
+			crStatus.Message = fmt.Sprintf("could not launch apb")
+			crStatus.Phase = crd.BundlePhaseFailed
+			o.UnstructuredContent()[statusKey] = crStatus
+			sdk.Update(o)
+			return
+		}
+		crStatus.Phase = crd.BundlePhaseCreating
+		o.UnstructuredContent()[statusKey] = crStatus
+		sdk.Update(o)
+		return
+	}
+
 }
 
 //TODO: Actaully write this logic here.
 func validParameter(b bundle.ParameterDescriptor, value interface{}) (bool, error) {
 	return true, nil
+}
+
+func hashMap(m map[string]interface{}) (string, error) {
+	h := sha1.New()
+	b, err := json.Marshal(m)
+	if err != nil {
+		return "", err
+	}
+	h.Write(b)
+	return fmt.Sprintf("%x", h.Sum(nil)), nil
+}
+
+func launchAPBProvision(specMap map[string]interface{}, specPlan crd.SpecPlan, status *crd.BundleStatus, o *unstructured.Unstructured) error {
+	specMap["_apb_plan_id"] = specPlan.Plan.ID
+	p := bundle.Parameters(specMap)
+	si := bundle.ServiceInstance{
+		ID:   *status.ID,
+		Spec: &specPlan.Spec,
+		Context: &bundle.Context{
+			Platform:  "kubernetes",
+			Namespace: o.GetNamespace(),
+		},
+		Parameters: &p,
+	}
+	logrus.Infof("using service instance : %v", si)
+	ex := bundle.NewExecutor()
+	channel := ex.Provision(&si)
+	go func() {
+		for status := range channel {
+			logrus.Infof("status: %v", status)
+		}
+	}()
+	return nil
 }
